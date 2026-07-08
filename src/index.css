@@ -1,0 +1,70 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+  --color-primary-950: #022c22;
+  --color-sidebar: #0d5c3d;
+  --color-sidebar-hover: #0a4a31;
+  --color-sidebar-active: #147a52;
+  --font-sans: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-slate-100 text-slate-800 font-sans min-w-[1024px];
+  }
+
+  * {
+    @apply border-slate-200;
+  }
+}
+
+/* FullCalendar essentials */
+.calendar-wrapper .fc {
+  --fc-border-color: #e2e8f0;
+  --fc-button-bg-color: #047857;
+  --fc-button-border-color: #047857;
+  --fc-button-hover-bg-color: #065f46;
+  --fc-button-hover-border-color: #065f46;
+  --fc-button-active-bg-color: #064e3b;
+  --fc-button-active-border-color: #064e3b;
+  --fc-today-bg-color: #ecfdf5;
+  font-size: 0.875rem;
+}
+
+.calendar-wrapper .fc .fc-toolbar-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.calendar-wrapper .fc .fc-button {
+  border-radius: 0.5rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.calendar-wrapper .fc .fc-daygrid-day-number,
+.calendar-wrapper .fc .fc-col-header-cell-cushion {
+  color: #334155;
+  text-decoration: none;
+}
+
+.calendar-wrapper .fc .fc-event {
+  border-radius: 0.375rem;
+  padding: 1px 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
