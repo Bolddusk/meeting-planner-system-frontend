@@ -64,22 +64,17 @@ export default function Dashboard() {
       setLoading(true)
       setError('')
       try {
-        const now = new Date()
-        const weekLater = new Date(now)
+        const weekLater = new Date()
         weekLater.setDate(weekLater.getDate() + 7)
-
-        const from = now.toISOString()
-        const to = weekLater.toISOString()
 
         const requests = [
           getMeetings({
             view: 'list',
-            from,
-            to,
-            limit: 5,
+            upcoming: true,
+            to: weekLater.toISOString(),
+            limit: 10,
             sort: 'start_time',
             order: 'asc',
-            status: 'SCHEDULED',
           }),
           getActionItems({
             assigneeId: user?.id,

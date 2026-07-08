@@ -1,33 +1,47 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Plus, Pencil } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { MessageSquare, Plus, Pencil } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
+import ExportToolbar from '@/components/ui/ExportToolbar'
 import { getActionItems, createActionItem, updateActionItem } from '@/api/actionItems'
-import { getUsers } from '@/api/users'
 import { getApiErrorMessage } from '@/api/axios'
-import { formatDate } from '@/utils/formatDate'
+import { formatDate, formatDateTime } from '@/utils/formatDate'
 import { ACTION_ITEM_STATUS_VARIANT, ACTION_ITEM_STATUSES } from '@/utils/actionItemStatus'
+import { RSVP_STATUS_VARIANT, formatRsvpStatus } from '@/utils/meetingStatus'
+import {
+  assigneeDisplayName,
+  assigneeKeyFromItem,
+  buildMeetingAssigneeOptions,
+  formatAssigneeOptionLabel,
+  payloadFromAssigneeKey,
+} from '@/utils/assignee'
 import { useAuth, usePermission } from '@/hooks/useAuth'
+import { isAdminOrAbove, isUserRole } from '@/utils/permissions'
 
-export default function ActionItemsTab({ meetingId }) {
+export default function ActionItemsTab({ meetingId, meeting }) {
   const { user } = useAuth()
   const { can } = usePermission()
   const timezone = user?.timezone || 'UTC'
+  const isUser = isUserRole(user)
+  const isAdmin = isAdminOrAbove(user)
 
   const canManage = can('note.official.edit') || can('meeting.edit')
+  const assigneeOptions = useMemo(() => buildMeetingAssigneeOptions(meeting), [meeting])
 
   const [items, setItems] = useState([])
-  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [editItem, setEditItem] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [remarksItem, setRemarksItem] = useState(null)
+  const [remarksText, setRemarksText] = useState('')
+  const [savingRemarks, setSavingRemarks] = useState(false)
 
   const [title, setTitle] = useState('')
-  const [assigneeId, setAssigneeId] = useState('')
+  const [assigneeKey, setAssigneeKey] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [status, setStatus] = useState('OPEN')
 
@@ -36,33 +50,33 @@ export default function ActionItemsTab({ meetingId }) {
     setError('')
     try {
       const res = await getActionItems({ meetingId, limit: 100 })
-      setItems(res.data ?? [])
+      let list = res.data ?? []
+      if (isUser) {
+        list = list.filter(
+          (item) => item.assignee?.type === 'USER' && item.assignee?.id === user?.id,
+        )
+      }
+      setItems(list)
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [meetingId])
+  }, [meetingId, isUser, user?.id])
 
   useEffect(() => {
     loadItems()
   }, [loadItems])
 
-  useEffect(() => {
-    if (!canManage) return
-    getUsers({ limit: 100, is_active: true })
-      .then((res) => setUsers(res.data ?? []))
-      .catch(() => setUsers([]))
-  }, [canManage])
-
-  const isAssignee = (item) => item.assignee?.id === user?.id
+  const isAssignee = (item) =>
+    item.assignee?.type === 'USER' && item.assignee?.id === user?.id
 
   const canEditItem = (item) => canManage || isAssignee(item)
 
   const openCreate = () => {
     setEditItem(null)
     setTitle('')
-    setAssigneeId('')
+    setAssigneeKey('')
     setDueDate('')
     setStatus('OPEN')
     setFormOpen(true)
@@ -71,7 +85,7 @@ export default function ActionItemsTab({ meetingId }) {
   const openEdit = (item) => {
     setEditItem(item)
     setTitle(item.title)
-    setAssigneeId(String(item.assignee?.id ?? ''))
+    setAssigneeKey(assigneeKeyFromItem(item.assignee))
     setDueDate(item.due_date?.slice(0, 10) ?? '')
     setStatus(item.status)
     setFormOpen(true)
@@ -83,14 +97,21 @@ export default function ActionItemsTab({ meetingId }) {
       return
     }
 
+    const assigneePayload = payloadFromAssigneeKey(assigneeKey)
+
     setSaving(true)
     setError('')
     try {
       if (editItem) {
         if (canManage) {
+          if (!assigneePayload) {
+            setError('Select an assignee from this meeting.')
+            setSaving(false)
+            return
+          }
           await updateActionItem(editItem.id, {
             title,
-            assignee_id: Number(assigneeId),
+            ...assigneePayload,
             due_date: dueDate || undefined,
             status,
           })
@@ -98,9 +119,14 @@ export default function ActionItemsTab({ meetingId }) {
           await updateActionItem(editItem.id, { status })
         }
       } else {
+        if (!assigneePayload) {
+          setError('Select an assignee from this meeting.')
+          setSaving(false)
+          return
+        }
         await createActionItem({
           meeting_id: Number(meetingId),
-          assignee_id: Number(assigneeId),
+          ...assigneePayload,
           title,
           due_date: dueDate || undefined,
           status: 'OPEN',
@@ -124,6 +150,46 @@ export default function ActionItemsTab({ meetingId }) {
     }
   }
 
+  const openRemarksModal = (item) => {
+    setRemarksItem(item)
+    setRemarksText(item.remarks || '')
+    setError('')
+  }
+
+  const handleSaveRemarks = async () => {
+    if (!remarksItem) return
+    setSavingRemarks(true)
+    setError('')
+    try {
+      await updateActionItem(remarksItem.id, { remarks: remarksText.trim() || null })
+      setRemarksItem(null)
+      setRemarksText('')
+      await loadItems()
+    } catch (err) {
+      setError(getApiErrorMessage(err))
+    } finally {
+      setSavingRemarks(false)
+    }
+  }
+
+  const exportSubtitle = useMemo(() => {
+    if (!meeting) return undefined
+    return `${meeting.title} · ${formatDateTime(meeting.start_time, timezone)}`
+  }, [meeting, timezone])
+
+  const exportRows = useMemo(
+    () =>
+      items.map((item) => [
+        item.title,
+        assigneeDisplayName(item.assignee),
+        item.due_date ? formatDate(item.due_date, timezone) : '',
+        item.status,
+        item.remarks || '',
+        item.assignee?.rsvp_status ? formatRsvpStatus(item.assignee.rsvp_status) : '',
+      ]),
+    [items, timezone],
+  )
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -133,40 +199,70 @@ export default function ActionItemsTab({ meetingId }) {
   }
 
   return (
-    <div className="space-y-4">
-      {canManage && (
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Add action item
-        </Button>
-      )}
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {canManage ? (
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Add action item
+          </Button>
+        ) : (
+          <div />
+        )}
+        <ExportToolbar
+          title="Action Items"
+          subtitle={exportSubtitle}
+          filename={`meeting-${meetingId}-action-items`}
+          headers={['Title', 'Assignee', 'Due Date', 'Status', 'Remarks', 'RSVP Status']}
+          rows={exportRows}
+        />
+      </div>
 
-      {error && !formOpen && (
+      {error && !formOpen && !remarksItem && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {items.length === 0 ? (
-        <p className="py-12 text-center text-sm text-slate-500">No action items for this meeting.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="w-40 px-4 py-3">Title</th>
+              <th className="w-44 px-4 py-3">Assignee</th>
+              <th className="w-28 px-4 py-3">Due date</th>
+              <th className="w-28 px-4 py-3">Status</th>
+              <th className="w-36 px-4 py-3">Remarks</th>
+              <th className="w-24 px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {items.length === 0 ? (
               <tr>
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Assignee</th>
-                <th className="px-4 py-3">Due date</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
+                  No action items for this meeting.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">{item.title}</td>
-                  <td className="px-4 py-3 text-slate-600">{item.assignee?.full_name ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">
+            ) : (
+              items.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50 align-top">
+                  <td className="px-4 py-3 break-words font-medium text-slate-900">{item.title}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="break-all text-slate-700">
+                        {assigneeDisplayName(item.assignee)}
+                      </span>
+                      {item.assignee?.type === 'GUEST' && (
+                        <span className="text-xs text-slate-400">Guest</span>
+                      )}
+                      {item.assignee?.rsvp_status && (
+                        <Badge variant={RSVP_STATUS_VARIANT[item.assignee.rsvp_status] ?? 'default'}>
+                          {formatRsvpStatus(item.assignee.rsvp_status)}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
                     {item.due_date ? formatDate(item.due_date, timezone) : '—'}
                   </td>
                   <td className="px-4 py-3">
@@ -187,7 +283,27 @@ export default function ActionItemsTab({ meetingId }) {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {canEditItem(item) && (
+                    <div className="flex items-start gap-2">
+                      <p
+                        className="line-clamp-2 min-w-0 flex-1 break-words text-xs text-slate-600 [overflow-wrap:anywhere]"
+                        title={item.remarks || undefined}
+                      >
+                        {item.remarks || '—'}
+                      </p>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => openRemarksModal(item)}
+                          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-700"
+                          title={item.remarks ? 'Edit remarks' : 'Add remarks'}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {canEditItem(item) && canManage && (
                       <button
                         type="button"
                         onClick={() => openEdit(item)}
@@ -199,11 +315,11 @@ export default function ActionItemsTab({ meetingId }) {
                     )}
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <Modal
         open={formOpen}
@@ -233,17 +349,20 @@ export default function ActionItemsTab({ meetingId }) {
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">Assignee</label>
                 <select
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
+                  value={assigneeKey}
+                  onChange={(e) => setAssigneeKey(e.target.value)}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
                 >
                   <option value="">Select assignee</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name}
+                  {assigneeOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {formatAssigneeOptionLabel(option)}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Only participants and guests from this meeting can be assigned.
+                </p>
               </div>
               <Input
                 label="Due date"
@@ -285,6 +404,49 @@ export default function ActionItemsTab({ meetingId }) {
             </div>
           )}
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(remarksItem)}
+        onClose={() => {
+          setRemarksItem(null)
+          setRemarksText('')
+        }}
+        title="Admin remarks"
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setRemarksItem(null)
+                setRemarksText('')
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveRemarks} loading={savingRemarks}>
+              Save remarks
+            </Button>
+          </>
+        }
+      >
+        {error && remarksItem && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+        <p className="mb-3 text-sm text-slate-600">
+          Action item: <strong>{remarksItem?.title}</strong>
+        </p>
+        <label className="mb-1.5 block text-sm font-medium text-slate-700">Remarks</label>
+        <textarea
+          value={remarksText}
+          onChange={(e) => setRemarksText(e.target.value)}
+          rows={4}
+          placeholder="Add admin-only notes for this action item..."
+          className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+        />
       </Modal>
     </div>
   )

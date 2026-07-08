@@ -3,25 +3,32 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { cn } from '@/utils/cn'
+import { useAuth } from '@/hooks/useAuth'
+import { isUserRole } from '@/utils/permissions'
 
-const pageTitles = {
-  '/dashboard': 'Dashboard',
-  '/meetings': 'Meetings',
-  '/calendar': 'Calendar',
-  '/calendar': 'Calendar',
-  '/users': 'User Management',
-  '/rooms': 'Rooms',
-  '/exports': 'Exports & Reports',
-  '/audit': 'Audit Log',
-  '/settings': 'Settings',
+function getPageTitle(pathname, isUser) {
+  const titles = {
+    '/dashboard': 'Dashboard',
+    '/meetings': isUser ? 'My Meetings' : 'Meetings',
+    '/calendar': 'Calendar',
+    '/users': 'User Management',
+    '/rooms': 'Rooms',
+    '/exports': 'Exports & Reports',
+    '/audit': 'Audit Log',
+    '/settings': 'Settings',
+  }
+
+  if (titles[pathname]) return titles[pathname]
+  if (pathname.startsWith('/meetings/')) return 'Meeting Detail'
+  return isUser ? 'Meeting Planner' : 'Meeting Planner Admin'
 }
 
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const location = useLocation()
-  const title =
-    pageTitles[location.pathname] ||
-    (location.pathname.startsWith('/meetings/') ? 'Meeting Detail' : 'Meeting Planner Admin')
+  const { user } = useAuth()
+  const isUser = isUserRole(user)
+  const title = getPageTitle(location.pathname, isUser)
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -33,7 +40,7 @@ export default function AppLayout() {
         )}
       >
         <Topbar title={title} sidebarCollapsed={collapsed} />
-        <main className="flex-1 p-8">
+        <main className="min-w-0 flex-1 overflow-x-hidden p-8">
           <Outlet />
         </main>
       </div>

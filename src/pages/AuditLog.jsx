@@ -8,7 +8,7 @@ import { getAuditLog } from '@/api/audit'
 import { getApiErrorMessage } from '@/api/axios'
 import { formatDateTime } from '@/utils/formatDate'
 import { dateInputToUtcEnd, dateInputToUtcStart } from '@/utils/datetime'
-import { AUDIT_ACTION_VARIANT, AUDIT_ACTION_FILTERS, formatAuditChanges } from '@/utils/auditActions'
+import { AUDIT_ACTION_VARIANT, AUDIT_ACTION_FILTERS, formatAuditChanges, AUDIT_TABLE_CLASS, AUDIT_CHANGES_CELL_CLASS, AUDIT_CHANGES_LINE_CLASS } from '@/utils/auditActions'
 import { useAuth } from '@/hooks/useAuth'
 
 export default function AuditLog() {
@@ -50,7 +50,7 @@ export default function AuditLog() {
   }, [loadAudit])
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       <PageHero
         eyebrow="ADMINISTRATION"
         title="Audit Log"
@@ -139,14 +139,14 @@ export default function AuditLog() {
             <p className="py-16 text-center text-sm text-slate-500">No audit entries found.</p>
           ) : (
             <>
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full text-left text-sm">
+              <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
+                <table className={AUDIT_TABLE_CLASS}>
                   <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <tr>
-                      <th className="px-4 py-3">When</th>
-                      <th className="px-4 py-3">Actor</th>
-                      <th className="px-4 py-3">Meeting</th>
-                      <th className="px-4 py-3">Action</th>
+                      <th className="w-36 px-4 py-3">When</th>
+                      <th className="w-40 px-4 py-3">Actor</th>
+                      <th className="w-36 px-4 py-3">Meeting</th>
+                      <th className="w-28 px-4 py-3">Action</th>
                       <th className="px-4 py-3">Changes</th>
                     </tr>
                   </thead>
@@ -159,20 +159,20 @@ export default function AuditLog() {
                       )
                       return (
                         <tr key={entry.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-600 align-top">
                             {formatDateTime(entry.created_at, timezone)}
                           </td>
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-slate-900">
+                          <td className="px-4 py-3 align-top">
+                            <p className="break-words font-medium text-slate-900">
                               {entry.actor?.full_name ?? '—'}
                             </p>
-                            <p className="text-xs text-slate-500">{entry.actor?.email}</p>
+                            <p className="break-all text-xs text-slate-500">{entry.actor?.email}</p>
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 align-top">
                             {entry.meeting_id ? (
                               <Link
                                 to={`/meetings/${entry.meeting_id}`}
-                                className="text-primary-700 hover:underline"
+                                className="break-words text-primary-700 hover:underline"
                               >
                                 {entry.meeting?.title ?? `#${entry.meeting_id}`}
                               </Link>
@@ -180,16 +180,16 @@ export default function AuditLog() {
                               '—'
                             )}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 align-top">
                             <Badge variant={AUDIT_ACTION_VARIANT[entry.action] ?? 'default'}>
                               {entry.action}
                             </Badge>
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
+                          <td className={`px-4 py-3 align-top ${AUDIT_CHANGES_CELL_CLASS}`}>
                             {changes ? (
                               <ul className="space-y-1">
                                 {changes.map((line) => (
-                                  <li key={line} className="text-xs">
+                                  <li key={line} className={AUDIT_CHANGES_LINE_CLASS}>
                                     {line}
                                   </li>
                                 ))}

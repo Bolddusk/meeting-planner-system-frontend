@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import RichTextEditor from '@/components/ui/RichTextEditor'
+import ExportToolbar from '@/components/ui/ExportToolbar'
 import {
   getMeetingNotes,
   createNote,
@@ -16,9 +17,11 @@ import { NOTE_TYPE_VARIANT, OFFICIAL_NOTE_TYPES, isOfficialNoteType } from '@/ut
 import { useAuth, usePermission } from '@/hooks/useAuth'
 import { isAdminOrAbove } from '@/utils/permissions'
 
-const EMPTY_CONTENT = '<p></p>'
+function stripHtml(html) {
+  return html?.replace(/<[^>]*>/g, '').trim() || ''
+}
 
-export default function NotesTab({ meetingId }) {
+export default function NotesTab({ meetingId, meeting }) {
   const { user } = useAuth()
   const { can } = usePermission()
   const timezone = user?.timezone || 'UTC'
@@ -79,7 +82,7 @@ export default function NotesTab({ meetingId }) {
   }
 
   const handleSave = async () => {
-    const stripped = content.replace(/<[^>]*>/g, '').trim()
+    const stripped = stripHtml(content)
     if (!stripped) {
       setError('Note content is required.')
       return
@@ -120,6 +123,23 @@ export default function NotesTab({ meetingId }) {
     }
   }
 
+  const exportSubtitle = useMemo(() => {
+    if (!meeting) return undefined
+    return `${meeting.title} · ${formatDateTime(meeting.start_time, timezone)}`
+  }, [meeting, timezone])
+
+  const exportRows = useMemo(
+    () =>
+      notes.map((note) => [
+        note.note_type,
+        note.author?.full_name || '',
+        stripHtml(note.content),
+        note.is_private ? 'Yes' : 'No',
+        formatDateTime(note.created_at, timezone),
+      ]),
+    [notes, timezone],
+  )
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -129,26 +149,35 @@ export default function NotesTab({ meetingId }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {canOfficialNotes && (
-          <>
-            <Button size="sm" onClick={() => openCreate('MINUTES')}>
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canOfficialNotes && (
+            <>
+              <Button size="sm" onClick={() => openCreate('MINUTES')}>
+                <Plus className="h-4 w-4" />
+                Add minutes
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => openCreate('DECISION')}>
+                <Plus className="h-4 w-4" />
+                Add decision
+              </Button>
+            </>
+          )}
+          {canPersonalNotes && (
+            <Button size="sm" variant="ghost" onClick={() => openCreate('PERSONAL')}>
               <Plus className="h-4 w-4" />
-              Add minutes
+              Add personal note
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => openCreate('DECISION')}>
-              <Plus className="h-4 w-4" />
-              Add decision
-            </Button>
-          </>
-        )}
-        {canPersonalNotes && (
-          <Button size="sm" variant="ghost" onClick={() => openCreate('PERSONAL')}>
-            <Plus className="h-4 w-4" />
-            Add personal note
-          </Button>
-        )}
+          )}
+        </div>
+        <ExportToolbar
+          title="Meeting Notes"
+          subtitle={exportSubtitle}
+          filename={`meeting-${meetingId}-notes`}
+          headers={['Type', 'Author', 'Content', 'Private', 'Created']}
+          rows={exportRows}
+        />
       </div>
 
       {error && !formOpen && (
@@ -157,56 +186,78 @@ export default function NotesTab({ meetingId }) {
         </div>
       )}
 
-      {notes.length === 0 ? (
-        <p className="py-12 text-center text-sm text-slate-500">No notes yet.</p>
-      ) : (
-        <div className="space-y-4">
-          {notes.map((note) => (
-            <div key={note.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={NOTE_TYPE_VARIANT[note.note_type] ?? 'default'}>
-                    {note.note_type}
-                  </Badge>
-                  {note.is_private && <Badge variant="default">Private</Badge>}
-                  <span className="text-xs text-slate-400">v{note.version}</span>
-                </div>
-                {(canEditNote(note) || canDeleteNote(note)) && (
-                  <div className="flex gap-1">
-                    {canEditNote(note) && (
-                      <button
-                        type="button"
-                        onClick={() => openEdit(note)}
-                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-primary-700"
-                        title="Edit"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                    {canDeleteNote(note) && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteTarget(note)}
-                        className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                by {note.author?.full_name} · {formatDateTime(note.updated_at || note.created_at, timezone)}
-              </p>
-              <div
-                className="prose prose-sm mt-4 max-w-none border-t border-slate-100 pt-4 text-slate-700"
-                dangerouslySetInnerHTML={{ __html: note.content }}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="w-32 px-4 py-3">Type</th>
+              <th className="w-36 px-4 py-3">Author</th>
+              <th className="px-4 py-3">Content</th>
+              <th className="w-40 px-4 py-3">Created</th>
+              <th className="w-24 px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {notes.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-500">
+                  No notes yet.
+                </td>
+              </tr>
+            ) : (
+              notes.map((note) => (
+                <tr key={note.id} className="hover:bg-slate-50 align-top">
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant={NOTE_TYPE_VARIANT[note.note_type] ?? 'default'}>
+                        {note.note_type}
+                      </Badge>
+                      {note.is_private && (
+                        <Badge variant="default" className="text-[10px]">
+                          Private
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 break-words text-slate-700">
+                    {note.author?.full_name ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 break-words [overflow-wrap:anywhere] text-slate-700">
+                    {stripHtml(note.content) || '—'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-slate-500">
+                    {formatDateTime(note.created_at, timezone)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1">
+                      {canEditNote(note) && (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(note)}
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-primary-700"
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canDeleteNote(note) && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(note)}
+                          className="rounded-lg p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <Modal
         open={formOpen}

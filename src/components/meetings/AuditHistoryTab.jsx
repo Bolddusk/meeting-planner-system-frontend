@@ -1,19 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Badge from '@/components/ui/Badge'
-import Button from '@/components/ui/Button'
+import ExportToolbar from '@/components/ui/ExportToolbar'
 import { getAuditLog } from '@/api/audit'
 import { getApiErrorMessage } from '@/api/axios'
 import { formatDateTime } from '@/utils/formatDate'
-import { AUDIT_ACTION_VARIANT, formatAuditChanges } from '@/utils/auditActions'
+import {
+  AUDIT_ACTION_VARIANT,
+  AUDIT_TABLE_CLASS,
+  AUDIT_CHANGES_CELL_CLASS,
+  AUDIT_CHANGES_LINE_CLASS,
+  formatAuditChanges,
+  formatAuditChangesText,
+} from '@/utils/auditActions'
 import { useAuth } from '@/hooks/useAuth'
 
-export default function AuditHistoryTab({ meetingId }) {
+export default function AuditHistoryTab({ meetingId, meeting }) {
   const { user } = useAuth()
   const timezone = user?.timezone || 'UTC'
 
   const [entries, setEntries] = useState([])
-  const [meta, setMeta] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 })
-  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -21,19 +26,35 @@ export default function AuditHistoryTab({ meetingId }) {
     setLoading(true)
     setError('')
     try {
-      const res = await getAuditLog({ meetingId, page, limit: 20 })
+      const res = await getAuditLog({ meetingId, page: 1, limit: 100 })
       setEntries(res.data ?? [])
-      setMeta(res.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 })
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [meetingId, page])
+  }, [meetingId])
 
   useEffect(() => {
     loadAudit()
   }, [loadAudit])
+
+  const exportSubtitle = useMemo(() => {
+    if (!meeting) return undefined
+    return `${meeting.title} · ${formatDateTime(meeting.start_time, timezone)}`
+  }, [meeting, timezone])
+
+  const exportRows = useMemo(
+    () =>
+      entries.map((entry) => [
+        formatDateTime(entry.created_at, timezone),
+        entry.actor?.full_name || '',
+        entry.actor?.email || '',
+        entry.action,
+        formatAuditChangesText(entry.old_values, entry.new_values, timezone),
+      ]),
+    [entries, timezone],
+  )
 
   if (loading) {
     return (
@@ -56,14 +77,24 @@ export default function AuditHistoryTab({ meetingId }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
-        <table className="w-full text-left text-sm">
+    <div className="min-w-0 max-w-full space-y-4">
+      <div className="flex justify-end">
+        <ExportToolbar
+          title="Audit History"
+          subtitle={exportSubtitle}
+          filename={`meeting-${meetingId}-audit-history`}
+          headers={['When', 'Actor', 'Email', 'Action', 'Changes']}
+          rows={exportRows}
+        />
+      </div>
+
+      <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
+        <table className={AUDIT_TABLE_CLASS}>
           <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">When</th>
-              <th className="px-4 py-3">Actor</th>
-              <th className="px-4 py-3">Action</th>
+              <th className="w-36 px-4 py-3">When</th>
+              <th className="w-40 px-4 py-3">Actor</th>
+              <th className="w-28 px-4 py-3">Action</th>
               <th className="px-4 py-3">Changes</th>
             </tr>
           </thead>
@@ -72,23 +103,25 @@ export default function AuditHistoryTab({ meetingId }) {
               const changes = formatAuditChanges(entry.old_values, entry.new_values, timezone)
               return (
                 <tr key={entry.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap align-top">
                     {formatDateTime(entry.created_at, timezone)}
                   </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-900">{entry.actor?.full_name ?? '—'}</p>
-                    <p className="text-xs text-slate-500">{entry.actor?.email}</p>
+                  <td className="px-4 py-3 align-top">
+                    <p className="break-words font-medium text-slate-900">
+                      {entry.actor?.full_name ?? '—'}
+                    </p>
+                    <p className="break-all text-xs text-slate-500">{entry.actor?.email}</p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 align-top">
                     <Badge variant={AUDIT_ACTION_VARIANT[entry.action] ?? 'default'}>
                       {entry.action}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className={`px-4 py-3 align-top ${AUDIT_CHANGES_CELL_CLASS}`}>
                     {changes ? (
                       <ul className="space-y-1">
                         {changes.map((line) => (
-                          <li key={line} className="text-xs">
+                          <li key={line} className={AUDIT_CHANGES_LINE_CLASS}>
                             {line}
                           </li>
                         ))}
@@ -103,27 +136,6 @@ export default function AuditHistoryTab({ meetingId }) {
           </tbody>
         </table>
       </div>
-
-      {meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            Page {meta.page} of {meta.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={page >= meta.totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

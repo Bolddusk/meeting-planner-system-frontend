@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { usePermission } from '@/hooks/useAuth'
-import { isAdminOrAbove, canAccessExportsPage } from '@/utils/permissions'
+import { isAdminOrAbove, canAccessExportsPage, isUserRole } from '@/utils/permissions'
 
 const navSections = [
   {
@@ -23,7 +23,7 @@ const navSections = [
   {
     label: 'Meetings',
     items: [
-      { to: '/meetings', label: 'All Meetings', icon: CalendarDays },
+      { to: '/meetings', label: 'All Meetings', userLabel: 'My Meetings', icon: CalendarDays },
       { to: '/calendar', label: 'Calendar', icon: Calendar },
     ],
   },
@@ -46,6 +46,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const { user } = usePermission()
   const showAdmin = isAdminOrAbove(user)
   const showExports = canAccessExportsPage(user)
+  const isUser = isUserRole(user)
 
   return (
     <aside
@@ -88,11 +89,13 @@ export default function Sidebar({ collapsed, onToggle }) {
                 </p>
               )}
               <ul className="space-y-1">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const label = isUser && item.userLabel ? item.userLabel : item.label
+                  return (
                   <li key={item.to}>
                     <NavLink
                       to={item.to}
-                      title={collapsed ? item.label : undefined}
+                      title={collapsed ? label : undefined}
                       className={({ isActive }) =>
                         cn(
                           'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
@@ -104,10 +107,11 @@ export default function Sidebar({ collapsed, onToggle }) {
                       }
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
-                      {!collapsed && <span>{item.label}</span>}
+                      {!collapsed && <span>{label}</span>}
                     </NavLink>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </div>
           )

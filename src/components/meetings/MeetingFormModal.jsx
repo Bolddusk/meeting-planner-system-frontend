@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -111,61 +111,22 @@ export default function MeetingFormModal({ open, onClose, meeting, onSaved }) {
   const participants = watch('participants') ?? []
   const startTime = watch('start_time')
 
+  const referenceLoadedForUserRef = useRef(null)
+  const loadGenerationRef = useRef(0)
+  const meetingId = meeting?.id
+
   useEffect(() => {
     if (!open) return
+
+    const generation = ++loadGenerationRef.current
+    let cancelled = false
+
     setSubmitError('')
     setConflictDetails(null)
     setScopeOpen(false)
     setPendingPayload(null)
-    async function loadFormData() {
-      setLoadingData(true)
-      setSubmitError('')
 
-      const errors = []
-
-      try {
-        const roomsRes = await getRooms()
-        setRooms(roomsRes.data ?? [])
-      } catch (err) {
-        errors.push(`Rooms: ${getApiErrorMessage(err)}`)
-        setRooms([])
-      }
-
-      let userList = []
-      try {
-        const usersRes = await getUsers({ limit: 100, is_active: true })
-        userList = usersRes.data ?? []
-        setUsers(userList)
-      } catch (err) {
-        errors.push(`Users: ${getApiErrorMessage(err)}`)
-        setUsers([])
-      }
-
-      const deptMap = new Map()
-      userList.forEach((u) => {
-        u.roles?.forEach((r) => {
-          if (r.department) deptMap.set(r.department.id, r.department)
-        })
-      })
-      if (user?.department) deptMap.set(user.department.id, user.department)
-
-      if (deptMap.size === 0) {
-        try {
-          const meetingsRes = await getMeetings({ view: 'list', limit: 100 })
-          ;(meetingsRes.data ?? []).forEach((m) => {
-            if (m.department) deptMap.set(m.department.id, m.department)
-          })
-        } catch {
-          // departments API not available; meetings fallback is best-effort
-        }
-      }
-
-      setDepartments([...deptMap.values()])
-
-      if (errors.length) {
-        setSubmitError(errors.join(' · '))
-      }
-
+    function applyFormDefaults() {
       if (meeting) {
         reset({
           title: meeting.title ?? '',
@@ -215,11 +176,88 @@ export default function MeetingFormModal({ open, onClose, meeting, onSaved }) {
       setGuestEmail('')
       setGuestName('')
       setGuestError('')
-      setLoadingData(false)
     }
 
-    loadFormData()
-  }, [open, meeting, reset, timezone, user, isSecretary])
+    async function loadReferenceData() {
+      const userId = user?.id ?? 'anonymous'
+      if (referenceLoadedForUserRef.current === userId) {
+        return { errors: [] }
+      }
+
+      const errors = []
+      let userList = []
+
+      try {
+        const roomsRes = await getRooms()
+        if (cancelled || generation !== loadGenerationRef.current) return null
+        setRooms(roomsRes.data ?? [])
+      } catch (err) {
+        errors.push(`Rooms: ${getApiErrorMessage(err)}`)
+        if (!cancelled && generation === loadGenerationRef.current) setRooms([])
+      }
+
+      try {
+        const usersRes = await getUsers({ limit: 100, is_active: true })
+        userList = usersRes.data ?? []
+        if (cancelled || generation !== loadGenerationRef.current) return null
+        setUsers(userList)
+      } catch (err) {
+        errors.push(`Users: ${getApiErrorMessage(err)}`)
+        if (!cancelled && generation === loadGenerationRef.current) setUsers([])
+      }
+
+      const deptMap = new Map()
+      userList.forEach((u) => {
+        u.roles?.forEach((r) => {
+          if (r.department) deptMap.set(r.department.id, r.department)
+        })
+      })
+      if (user?.department) deptMap.set(user.department.id, user.department)
+
+      if (deptMap.size === 0) {
+        try {
+          const meetingsRes = await getMeetings({ view: 'list', limit: 100 })
+          if (cancelled || generation !== loadGenerationRef.current) return null
+          ;(meetingsRes.data ?? []).forEach((m) => {
+            if (m.department) deptMap.set(m.department.id, m.department)
+          })
+        } catch {
+          // departments API not available; meetings fallback is best-effort
+        }
+      }
+
+      if (cancelled || generation !== loadGenerationRef.current) return null
+      setDepartments([...deptMap.values()])
+      referenceLoadedForUserRef.current = userId
+
+      return { errors }
+    }
+
+    async function run() {
+      const needsReferenceFetch = referenceLoadedForUserRef.current !== (user?.id ?? 'anonymous')
+      if (needsReferenceFetch) setLoadingData(true)
+
+      const result = await loadReferenceData()
+      if (cancelled || generation !== loadGenerationRef.current) return
+
+      if (result?.errors?.length) {
+        setSubmitError(result.errors.join(' · '))
+      }
+
+      applyFormDefaults()
+
+      if (!cancelled && generation === loadGenerationRef.current) {
+        setLoadingData(false)
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelled = true
+    }
+    // reset is intentionally omitted — its identity changes after reset() and retriggers this effect
+  }, [open, meetingId, timezone, user?.id, user?.dept_id, user?.department?.id, isSecretary])
 
   useEffect(() => {
     if (!recurrence.enabled || recurrence.freq !== 'WEEKLY' || !startTime) return
@@ -612,8 +650,8 @@ export default function MeetingFormModal({ open, onClose, meeting, onSaved }) {
                 <label className="text-sm font-medium text-slate-700">Invite guests by email</label>
               </div>
               <p className="mb-3 text-xs text-slate-500">
-                External people who don&apos;t have an account. They&apos;ll get an email invite with the
-                meeting link — no account is created.
+                External people who don&apos;t have an account. They&apos;ll receive an email invite with
+                Accept, Maybe, and Decline buttons — no login required. Saving again re-sends the invite.
               </p>
 
               <div className="flex flex-col gap-2 sm:flex-row">

@@ -37,7 +37,13 @@ const ROLE_PERMISSIONS = {
     'reminder.preferences.manage',
     'rsvp.manage',
   ],
-  USER: ['rsvp.manage', 'reschedule.request', 'note.personal.edit'],
+  USER: [
+    'note.personal.edit',
+    'export.ics',
+    'rsvp.manage',
+    'reminder.preferences.manage',
+    'reschedule.request',
+  ],
 }
 
 export function getPermissionsForRole(role) {
@@ -55,6 +61,14 @@ export function getRoleCode(user) {
 
 export function hasAdminAccess(user) {
   return ['SUPER_ADMIN', 'ADMIN', 'SECRETARY'].includes(getRoleCode(user))
+}
+
+export function isUserRole(user) {
+  return getRoleCode(user) === 'USER'
+}
+
+export function canAccessWebPanel(user) {
+  return ['SUPER_ADMIN', 'ADMIN', 'SECRETARY', 'USER'].includes(getRoleCode(user))
 }
 
 export function canManageUsers(user) {

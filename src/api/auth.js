@@ -44,13 +44,6 @@ function mockLogin(email, password) {
     throw err
   }
   const user = enrichUser(record.user)
-  if (user.role.code === 'USER') {
-    const err = new Error('Your account does not have admin panel access.')
-    err.response = {
-      data: { success: false, error: { message: 'Your account does not have admin panel access.' } },
-    }
-    throw err
-  }
   return {
     accessToken: 'mock-access-token',
     refreshToken: 'mock-refresh-token',
@@ -66,8 +59,8 @@ export async function login(email, password) {
   if (!data.success) throw new Error(data.error?.message || 'Login failed')
   const user = enrichUser(data.data.user)
   const roleCode = user.role?.code
-  if (!['SUPER_ADMIN', 'ADMIN', 'SECRETARY'].includes(roleCode)) {
-    throw new Error('Your account does not have admin panel access.')
+  if (!['SUPER_ADMIN', 'ADMIN', 'SECRETARY', 'USER'].includes(roleCode)) {
+    throw new Error('Your account does not have access to this application.')
   }
   return {
     accessToken: data.data.tokens?.accessToken ?? data.data.accessToken,

@@ -58,18 +58,18 @@ export default function Login() {
             Government of Pakistan
           </p>
           <h1 className="mt-3 text-4xl font-bold">Meeting Planner</h1>
-          <p className="mt-2 text-lg text-primary-100">Admin Panel</p>
+          <p className="mt-2 text-lg text-primary-100">Meeting Planner</p>
         </div>
         <div className="space-y-6">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10">
             <CalendarDays className="h-8 w-8" />
           </div>
           <p className="max-w-md text-primary-100">
-            Schedule, manage, and track government meetings across departments. Secure
-            role-based access for administrators and secretaries.
+            Schedule, manage, and track government meetings. Staff and invited participants
+            can view their meetings, RSVP, and stay up to date.
           </p>
         </div>
-        <p className="text-sm text-primary-300">Desktop admin panel — authorized personnel only</p>
+        <p className="text-sm text-primary-300">Government of Pakistan — secure access</p>
       </div>
 
       <div className="flex w-full flex-col justify-center px-8 py-12 lg:w-1/2 lg:px-20">
@@ -78,12 +78,12 @@ export default function Login() {
             <p className="text-xs font-semibold uppercase tracking-widest text-primary-700">
               Government of Pakistan
             </p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">Meeting Planner Admin</h1>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900">Meeting Planner</h1>
           </div>
 
           <h2 className="text-2xl font-bold text-slate-900">Sign in</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Enter your credentials to access the admin panel
+            Enter your credentials to view your meetings and notifications
           </p>
 
           {error && (
