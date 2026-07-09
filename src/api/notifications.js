@@ -19,3 +19,18 @@ export async function updateReminderPreferences(payload) {
   const { data } = await api.patch('/users/me/reminder-preferences', payload)
   return data
 }
+
+export async function getUnreadNotificationCount() {
+  const { data } = await api.get('/notifications/unread-count')
+  return data
+}
+
+export async function deleteNotification(id) {
+  const { data } = await api.delete(`/notifications/${id}`)
+  return data
+}
+
+export async function deleteAllNotifications() {
+  const { data } = await api.delete('/notifications')
+  return data
+}

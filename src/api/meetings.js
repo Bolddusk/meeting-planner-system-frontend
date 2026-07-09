@@ -84,3 +84,23 @@ export async function scheduleFollowUpMeeting(sourceMeetingId, payload) {
   const { data } = await api.post(`/meetings/${sourceMeetingId}/follow-up`, payload)
   return data
 }
+
+export async function getPersonalNote(meetingId) {
+  const { data } = await api.get(`/meetings/${meetingId}/note`)
+  return data
+}
+
+export async function savePersonalNote(meetingId, payload) {
+  const { data } = await api.put(`/meetings/${meetingId}/note`, payload)
+  return data
+}
+
+export async function getMyRescheduleRequest(meetingId) {
+  const { data } = await api.get(`/meetings/${meetingId}/reschedule-requests/mine`)
+  return data
+}
+
+export async function getRescheduleRequests(meetingId) {
+  const { data } = await api.get(`/meetings/${meetingId}/reschedule-requests`)
+  return data
+}

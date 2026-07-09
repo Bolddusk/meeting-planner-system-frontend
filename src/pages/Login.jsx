@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -7,6 +7,7 @@ import { CalendarDays } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
+import ForgotPasswordModal from '@/components/auth/ForgotPasswordModal'
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -18,6 +19,8 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from?.pathname || '/dashboard'
+  const resetMessage = location.state?.resetMessage
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   const {
     register,
@@ -86,6 +89,12 @@ export default function Login() {
             Enter your credentials to view your meetings and notifications
           </p>
 
+          {resetMessage && (
+            <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {resetMessage}
+            </div>
+          )}
+
           {error && (
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
@@ -107,6 +116,15 @@ export default function Login() {
               error={errors.password?.message}
               {...register('password')}
             />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setForgotOpen(true)}
+                className="text-sm font-medium text-primary-700 hover:text-primary-800"
+              >
+                Forgot password?
+              </button>
+            </div>
             <Button type="submit" className="w-full" size="lg" loading={isSubmitting}>
               Sign in
             </Button>
@@ -120,6 +138,8 @@ export default function Login() {
           )}
         </div>
       </div>
+
+      <ForgotPasswordModal open={forgotOpen} onClose={() => setForgotOpen(false)} />
     </div>
   )
 }

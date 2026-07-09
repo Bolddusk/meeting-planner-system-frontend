@@ -41,6 +41,8 @@ import FollowUpModal from '@/components/meetings/FollowUpModal'
 import LineageBanner from '@/components/meetings/LineageBanner'
 import AuditHistoryTab from '@/components/meetings/AuditHistoryTab'
 import NotesTab from '@/components/meetings/NotesTab'
+import PersonalNotesPanel from '@/components/meetings/PersonalNotesPanel'
+import RescheduleRequestsPanel from '@/components/meetings/RescheduleRequestsPanel'
 import ActionItemsTab from '@/components/meetings/ActionItemsTab'
 import {
   getMeeting,
@@ -130,6 +132,7 @@ export default function MeetingDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [requestRescheduleOpen, setRequestRescheduleOpen] = useState(false)
+  const [rescheduleRefreshKey, setRescheduleRefreshKey] = useState(0)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [scopeCancelOpen, setScopeCancelOpen] = useState(false)
   const [followUpOpen, setFollowUpOpen] = useState(false)
@@ -409,6 +412,12 @@ export default function MeetingDetail() {
         </div>
       )}
 
+      <RescheduleRequestsPanel
+        meetingId={id}
+        meeting={meeting}
+        refreshKey={rescheduleRefreshKey}
+      />
+
       {meeting.lineage?.type === 'FOLLOW_UP' && (
         <LineageBanner lineage={meeting.lineage} timezone={timezone} />
       )}
@@ -469,7 +478,8 @@ export default function MeetingDetail() {
           <CardHeader>
             <h3 className="font-semibold text-slate-900">Meeting Notes</h3>
           </CardHeader>
-          <CardBody>
+          <CardBody className="space-y-6">
+            <PersonalNotesPanel meetingId={id} />
             <NotesTab meetingId={id} meeting={meeting} />
           </CardBody>
         </Card>
@@ -1110,13 +1120,17 @@ export default function MeetingDetail() {
         open={rescheduleOpen}
         onClose={() => setRescheduleOpen(false)}
         meeting={meeting}
-        onRescheduled={loadMeeting}
+        onRescheduled={() => {
+          loadMeeting()
+          setRescheduleRefreshKey((k) => k + 1)
+        }}
       />
 
       <RequestRescheduleModal
         open={requestRescheduleOpen}
         onClose={() => setRequestRescheduleOpen(false)}
         meeting={meeting}
+        onSent={() => setRescheduleRefreshKey((k) => k + 1)}
       />
 
       <Modal

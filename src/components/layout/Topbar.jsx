@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, LogOut, User } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/utils/cn'
 import NotificationBell from '@/components/notifications/NotificationBell'
+import UserAvatar from '@/components/ui/UserAvatar'
 
 export default function Topbar({ title, sidebarCollapsed }) {
   const { user, logout } = useAuth()
@@ -36,9 +38,7 @@ export default function Topbar({ title, sidebarCollapsed }) {
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-700 text-sm font-semibold text-white">
-              {user?.full_name?.charAt(0) ?? 'U'}
-            </div>
+            <UserAvatar user={user} size="sm" />
             <div className="hidden text-left sm:block">
               <p className="text-sm font-semibold text-slate-800">{user?.full_name}</p>
               <p className="text-xs text-slate-500">{user?.role?.name}</p>
@@ -52,14 +52,13 @@ export default function Topbar({ title, sidebarCollapsed }) {
                 <p className="text-sm font-semibold text-slate-800">{user?.full_name}</p>
                 <p className="text-xs text-slate-500">{user?.email}</p>
               </div>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
+              <Link
+                to="/settings"
                 onClick={() => setMenuOpen(false)}
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"
               >
-                <User className="h-4 w-4" />
-                Profile
-              </button>
+                Profile settings
+              </Link>
               <button
                 type="button"
                 className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"

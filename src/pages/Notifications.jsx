@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell } from 'lucide-react'
+import { Bell, Trash2 } from 'lucide-react'
 import PageHero from '@/components/ui/PageHero'
 import Card, { CardBody } from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/api/notifications'
+import Modal from '@/components/ui/Modal'
+import {
+  getNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  deleteNotification,
+  deleteAllNotifications,
+} from '@/api/notifications'
 import { getApiErrorMessage } from '@/api/axios'
 import { getNotificationMeta } from '@/utils/notificationTypes'
 import { formatRelativeTime } from '@/utils/relativeTime'
@@ -23,6 +30,8 @@ export default function Notifications() {
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const loadNotifications = useCallback(async () => {
     setLoading(true)
@@ -54,6 +63,29 @@ export default function Notifications() {
       await loadNotifications()
     } catch (err) {
       setError(getApiErrorMessage(err))
+    }
+  }
+
+  const handleDelete = async (e, notificationId) => {
+    e.stopPropagation()
+    try {
+      await deleteNotification(notificationId)
+      await loadNotifications()
+    } catch (err) {
+      setError(getApiErrorMessage(err))
+    }
+  }
+
+  const handleClearAll = async () => {
+    setClearing(true)
+    try {
+      await deleteAllNotifications()
+      setClearOpen(false)
+      await loadNotifications()
+    } catch (err) {
+      setError(getApiErrorMessage(err))
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -102,11 +134,18 @@ export default function Notifications() {
             </button>
           ))}
         </div>
-        {unreadCount > 0 && (
-          <Button size="sm" variant="secondary" onClick={handleMarkAllRead}>
-            Mark all read ({unreadCount})
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {unreadCount > 0 && (
+            <Button size="sm" variant="secondary" onClick={handleMarkAllRead}>
+              Mark all read ({unreadCount})
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Button size="sm" variant="ghost" onClick={() => setClearOpen(true)}>
+              Clear all
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -133,55 +172,84 @@ export default function Notifications() {
                 const isReminder = notification.type === 'REMINDER'
 
                 return (
-                  <button
+                  <div
                     key={notification.id}
-                    type="button"
-                    onClick={() => handleOpen(notification)}
                     className={cn(
-                      'flex w-full gap-4 px-6 py-4 text-left transition-colors hover:bg-slate-50',
+                      'flex items-start gap-4 px-6 py-4 transition-colors hover:bg-slate-50',
                       !notification.is_read && 'bg-primary-50/30',
                       isReminder && !notification.is_read && 'border-l-4 border-l-amber-400',
                     )}
                   >
-                    <span
-                      className={cn(
-                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg',
-                        meta.bg,
-                      )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpen(notification)}
+                      className="flex min-w-0 flex-1 gap-4 text-left"
                     >
-                      {meta.icon}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p
+                      <span
                         className={cn(
-                          'text-sm text-slate-900',
-                          !notification.is_read && 'font-semibold',
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg',
+                          meta.bg,
                         )}
                       >
-                        {notification.title}
-                      </p>
-                      {notification.body && (
-                        <p className="mt-1 text-sm text-slate-600">{notification.body}</p>
-                      )}
-                      {notification.meeting?.title && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          {notification.meeting.title}
+                        {meta.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            'text-sm text-slate-900',
+                            !notification.is_read && 'font-semibold',
+                          )}
+                        >
+                          {notification.title}
                         </p>
-                      )}
-                      <p className="mt-2 text-xs text-slate-400">
-                        {formatRelativeTime(notification.created_at)}
-                      </p>
-                    </div>
-                    {!notification.is_read && (
-                      <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-primary-600" />
-                    )}
-                  </button>
+                        {notification.body && (
+                          <p className="mt-1 text-sm text-slate-600">{notification.body}</p>
+                        )}
+                        {notification.meeting?.title && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {notification.meeting.title}
+                          </p>
+                        )}
+                        <p className="mt-2 text-xs text-slate-400">
+                          {formatRelativeTime(notification.created_at)}
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDelete(e, notification.id)}
+                      className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 )
               })}
             </div>
           )}
         </CardBody>
       </Card>
+
+      <Modal
+        open={clearOpen}
+        onClose={() => setClearOpen(false)}
+        title="Clear all notifications"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setClearOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleClearAll} loading={clearing}>
+              Clear all
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          Delete all notifications? This cannot be undone.
+        </p>
+      </Modal>
     </div>
   )
 }

@@ -65,6 +65,7 @@ export default function Meetings() {
       if (statusFilter) params.status = statusFilter
       if (fromDate) params.from = dateInputToUtcStart(fromDate, timezone)
       if (toDate) params.to = dateInputToUtcEnd(toDate, timezone)
+      if (search) params.search = search
 
       const res = await getMeetings(params)
       const sorted = sortByNewest(res.data ?? [])
@@ -80,7 +81,7 @@ export default function Meetings() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, fromDate, toDate, timezone])
+  }, [statusFilter, fromDate, toDate, timezone, search])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -94,22 +95,12 @@ export default function Meetings() {
     loadMeetings()
   }, [loadMeetings])
 
-  const filtered = meetings.filter((m) => {
-    if (!search) return true
-    const q = search.toLowerCase()
-    return (
-      m.title?.toLowerCase().includes(q) ||
-      m.organizer?.full_name?.toLowerCase().includes(q) ||
-      m.room?.name?.toLowerCase().includes(q)
-    )
-  })
-
-  const displayMeetings = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const displayMeetings = meetings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const displayMeta = {
     page,
     limit: PAGE_SIZE,
-    total: filtered.length,
-    totalPages: Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)),
+    total: meta.total ?? meetings.length,
+    totalPages: Math.max(1, Math.ceil((meta.total ?? meetings.length) / PAGE_SIZE)),
   }
 
   const openCreate = () => {
@@ -275,7 +266,9 @@ export default function Meetings() {
                     {displayMeetings.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
-                          No meetings found
+                          {search
+                            ? 'No meetings match your search.'
+                            : 'No meetings found'}
                         </td>
                       </tr>
                     ) : (
