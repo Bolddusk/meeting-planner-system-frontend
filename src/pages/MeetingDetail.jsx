@@ -25,6 +25,8 @@ import {
   FileText,
   History,
   LogIn,
+  GitBranch,
+  Bell,
 } from 'lucide-react'
 import PageHero from '@/components/ui/PageHero'
 import Card, { CardBody, CardHeader } from '@/components/ui/Card'
@@ -35,6 +37,8 @@ import MeetingFormModal from '@/components/meetings/MeetingFormModal'
 import RecurrenceScopeModal from '@/components/meetings/RecurrenceScopeModal'
 import RescheduleModal from '@/components/meetings/RescheduleModal'
 import RequestRescheduleModal from '@/components/meetings/RequestRescheduleModal'
+import FollowUpModal from '@/components/meetings/FollowUpModal'
+import LineageBanner from '@/components/meetings/LineageBanner'
 import AuditHistoryTab from '@/components/meetings/AuditHistoryTab'
 import NotesTab from '@/components/meetings/NotesTab'
 import ActionItemsTab from '@/components/meetings/ActionItemsTab'
@@ -64,6 +68,11 @@ import { ACTION_ITEM_STATUS_VARIANT } from '@/utils/actionItemStatus'
 import { NOTE_TYPE_VARIANT } from '@/utils/noteTypes'
 import { assigneeDisplayName } from '@/utils/assignee'
 import { humanReadableRRule, isRecurringMeeting } from '@/utils/rrule'
+import {
+  canScheduleFollowUp,
+  normalizeActionItemsResponse,
+  normalizeNotesResponse,
+} from '@/utils/lineage'
 import { useAuth, usePermission } from '@/hooks/useAuth'
 import { cn } from '@/utils/cn'
 
@@ -123,6 +132,7 @@ export default function MeetingDetail() {
   const [requestRescheduleOpen, setRequestRescheduleOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [scopeCancelOpen, setScopeCancelOpen] = useState(false)
+  const [followUpOpen, setFollowUpOpen] = useState(false)
   const [icsLoading, setIcsLoading] = useState(false)
   const [guestRefreshLoading, setGuestRefreshLoading] = useState(false)
   const [overviewActions, setOverviewActions] = useState([])
@@ -157,11 +167,13 @@ export default function MeetingDetail() {
       }
 
       const [actionsRes, notesRes, auditRes] = await Promise.all(requests)
-      const actions = (actionsRes.data ?? []).filter((item) =>
+      const actionData = normalizeActionItemsResponse(actionsRes)
+      const noteData = normalizeNotesResponse(notesRes)
+      const actions = actionData.items.filter((item) =>
         ['OPEN', 'IN_PROGRESS'].includes(item.status),
       )
       setOverviewActions(actions.slice(0, 5))
-      setOverviewNotes((notesRes.data ?? []).slice(0, 2))
+      setOverviewNotes(noteData.notes.slice(0, 2))
       setOverviewActivity(canViewAudit ? (auditRes?.data ?? []).slice(0, 5) : [])
     } catch {
       setOverviewActions([])
@@ -225,6 +237,7 @@ export default function MeetingDetail() {
     canReschedule && meeting?.status !== 'CANCELLED'
   const showRequestReschedule =
     canRequestReschedule && myParticipation && meeting?.status !== 'CANCELLED'
+  const showFollowUp = canScheduleFollowUp(meeting, user, can)
 
   const rsvpTotals = useMemo(
     () => summarizeAllRsvps(meeting?.participants ?? [], meeting?.guests ?? []),
@@ -354,6 +367,12 @@ export default function MeetingDetail() {
               Request reschedule
             </Button>
           )}
+          {showFollowUp && (
+            <Button variant="secondary" size="sm" onClick={() => setFollowUpOpen(true)}>
+              <GitBranch className="h-4 w-4" />
+              Schedule follow-up
+            </Button>
+          )}
           {can('meeting.edit') && meeting.status !== 'CANCELLED' && (
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>
               <Pencil className="h-4 w-4" />
@@ -378,8 +397,21 @@ export default function MeetingDetail() {
       <PageHero
         eyebrow="MEETING DETAIL"
         title={meeting.title}
-        description={meeting.description || 'No description provided.'}
+        description={meeting.description || undefined}
       />
+
+      {meeting.status === 'SCHEDULED' && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+          <p className="text-sm text-amber-900">
+            Participants receive an email and in-app notification 1 hour before this meeting.
+          </p>
+        </div>
+      )}
+
+      {meeting.lineage?.type === 'FOLLOW_UP' && (
+        <LineageBanner lineage={meeting.lineage} timezone={timezone} />
+      )}
 
       {isRecurringMeeting(meeting) && meeting.recurrence?.rrule && (
         <div className="rounded-xl border border-primary-200 bg-primary-50 px-6 py-4">
@@ -1056,6 +1088,13 @@ export default function MeetingDetail() {
           </div>
         </div>
       )}
+
+      <FollowUpModal
+        open={followUpOpen}
+        onClose={() => setFollowUpOpen(false)}
+        meeting={meeting}
+        onCreated={(created) => navigate(`/meetings/${created.id}`)}
+      />
 
       <MeetingFormModal
         open={editOpen}

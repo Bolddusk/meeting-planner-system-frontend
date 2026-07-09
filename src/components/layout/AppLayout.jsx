@@ -16,6 +16,7 @@ function getPageTitle(pathname, isUser) {
     '/exports': 'Exports & Reports',
     '/audit': 'Audit Log',
     '/settings': 'Settings',
+    '/notifications': 'Notifications',
   }
 
   if (titles[pathname]) return titles[pathname]

@@ -5,11 +5,20 @@ import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import Input from '@/components/ui/Input'
 import ExportToolbar from '@/components/ui/ExportToolbar'
+import LineageBanner from '@/components/meetings/LineageBanner'
 import { getActionItems, createActionItem, updateActionItem } from '@/api/actionItems'
 import { getApiErrorMessage } from '@/api/axios'
 import { formatDate, formatDateTime } from '@/utils/formatDate'
 import { ACTION_ITEM_STATUS_VARIANT, ACTION_ITEM_STATUSES } from '@/utils/actionItemStatus'
 import { RSVP_STATUS_VARIANT, formatRsvpStatus } from '@/utils/meetingStatus'
+import {
+  canUpdateActionItemStatus,
+  getSourceMeetingLabel,
+  groupBySourceMeeting,
+  normalizeActionItemsResponse,
+  shouldGroupByLineage,
+  showActionItemsActionsColumn,
+} from '@/utils/lineage'
 import {
   assigneeDisplayName,
   assigneeKeyFromItem,
@@ -19,6 +28,7 @@ import {
 } from '@/utils/assignee'
 import { useAuth, usePermission } from '@/hooks/useAuth'
 import { isAdminOrAbove, isUserRole } from '@/utils/permissions'
+import { cn } from '@/utils/cn'
 
 export default function ActionItemsTab({ meetingId, meeting }) {
   const { user } = useAuth()
@@ -31,6 +41,7 @@ export default function ActionItemsTab({ meetingId, meeting }) {
   const assigneeOptions = useMemo(() => buildMeetingAssigneeOptions(meeting), [meeting])
 
   const [items, setItems] = useState([])
+  const [lineage, setLineage] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(false)
@@ -49,8 +60,10 @@ export default function ActionItemsTab({ meetingId, meeting }) {
     setLoading(true)
     setError('')
     try {
-      const res = await getActionItems({ meetingId, limit: 100 })
-      let list = res.data ?? []
+      const res = await getActionItems({ meetingId, limit: 100, includeLineage: true })
+      const parsed = normalizeActionItemsResponse(res)
+      setLineage(parsed.lineage)
+      let list = parsed.items
       if (isUser) {
         list = list.filter(
           (item) => item.assignee?.type === 'USER' && item.assignee?.id === user?.id,
@@ -68,10 +81,17 @@ export default function ActionItemsTab({ meetingId, meeting }) {
     loadItems()
   }, [loadItems])
 
-  const isAssignee = (item) =>
-    item.assignee?.type === 'USER' && item.assignee?.id === user?.id
+  const groupedItems = useMemo(() => {
+    if (!shouldGroupByLineage(lineage)) return null
+    return groupBySourceMeeting(items)
+  }, [lineage, items])
 
-  const canEditItem = (item) => canManage || isAssignee(item)
+  const showActionsColumn = useMemo(
+    () => showActionItemsActionsColumn(items, user, can),
+    [items, user, can],
+  )
+
+  const canManageItem = (item) => canManage && !item.is_from_previous_meeting
 
   const openCreate = () => {
     setEditItem(null)
@@ -103,7 +123,7 @@ export default function ActionItemsTab({ meetingId, meeting }) {
     setError('')
     try {
       if (editItem) {
-        if (canManage) {
+        if (canManageItem(editItem)) {
           if (!assigneePayload) {
             setError('Select an assignee from this meeting.')
             setSaving(false)
@@ -190,6 +210,130 @@ export default function ActionItemsTab({ meetingId, meeting }) {
     [items, timezone],
   )
 
+  const tableColSpan = 5 + (showActionsColumn ? 1 : 0)
+
+  const renderItemsTable = (itemList) => (
+    <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
+      <table className="w-full table-fixed text-left text-sm">
+        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <tr>
+            <th className="w-40 px-4 py-3">Title</th>
+            <th className="w-44 px-4 py-3">Assignee</th>
+            <th className="w-28 px-4 py-3">Due date</th>
+            <th className="w-28 px-4 py-3">Status</th>
+            <th className="w-36 px-4 py-3">Remarks</th>
+            {showActionsColumn && <th className="w-32 px-4 py-3">Actions</th>}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {itemList.length === 0 ? (
+            <tr>
+              <td colSpan={tableColSpan} className="px-4 py-12 text-center text-sm text-slate-500">
+                No action items for this meeting.
+              </td>
+            </tr>
+          ) : (
+            itemList.map((item) => {
+              const canChangeStatus = canUpdateActionItemStatus(item, user, can)
+              const canEdit = canManageItem(item)
+
+              return (
+                <tr
+                  key={item.id}
+                  className={cn(
+                    'align-top hover:bg-slate-50',
+                    item.is_from_previous_meeting && 'bg-slate-50/80',
+                  )}
+                >
+                  <td className="px-4 py-3">
+                    <div className="space-y-1">
+                      <p className="break-words font-medium text-slate-900">{item.title}</p>
+                      {item.is_from_previous_meeting && (
+                        <Badge variant="default" className="text-[10px]">
+                          Previous
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="break-all text-slate-700">
+                        {assigneeDisplayName(item.assignee)}
+                      </span>
+                      {item.assignee?.type === 'GUEST' && (
+                        <span className="text-xs text-slate-400">Guest</span>
+                      )}
+                      {item.assignee?.rsvp_status && (
+                        <Badge variant={RSVP_STATUS_VARIANT[item.assignee.rsvp_status] ?? 'default'}>
+                          {formatRsvpStatus(item.assignee.rsvp_status)}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                    {item.due_date ? formatDate(item.due_date, timezone) : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={ACTION_ITEM_STATUS_VARIANT[item.status]}>{item.status}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <p
+                        className="line-clamp-2 min-w-0 flex-1 break-words text-xs text-slate-600 [overflow-wrap:anywhere]"
+                        title={item.remarks || undefined}
+                      >
+                        {item.remarks || '—'}
+                      </p>
+                      {isAdmin && canManageItem(item) && (
+                        <button
+                          type="button"
+                          onClick={() => openRemarksModal(item)}
+                          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-700"
+                          title={item.remarks ? 'Edit remarks' : 'Add remarks'}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  {showActionsColumn && (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {canChangeStatus && (
+                          <select
+                            value={item.status}
+                            onChange={(e) => handleStatusChange(item, e.target.value)}
+                            className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                          >
+                            {ACTION_ITEM_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(item)}
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-primary-700"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -200,6 +344,8 @@ export default function ActionItemsTab({ meetingId, meeting }) {
 
   return (
     <div className="min-w-0 max-w-full space-y-4">
+      <LineageBanner lineage={lineage} timezone={timezone} />
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         {canManage ? (
           <Button size="sm" onClick={openCreate}>
@@ -224,102 +370,20 @@ export default function ActionItemsTab({ meetingId, meeting }) {
         </div>
       )}
 
-      <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-200">
-        <table className="w-full table-fixed text-left text-sm">
-          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="w-40 px-4 py-3">Title</th>
-              <th className="w-44 px-4 py-3">Assignee</th>
-              <th className="w-28 px-4 py-3">Due date</th>
-              <th className="w-28 px-4 py-3">Status</th>
-              <th className="w-36 px-4 py-3">Remarks</th>
-              <th className="w-24 px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {items.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
-                  No action items for this meeting.
-                </td>
-              </tr>
-            ) : (
-              items.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50 align-top">
-                  <td className="px-4 py-3 break-words font-medium text-slate-900">{item.title}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1">
-                      <span className="break-all text-slate-700">
-                        {assigneeDisplayName(item.assignee)}
-                      </span>
-                      {item.assignee?.type === 'GUEST' && (
-                        <span className="text-xs text-slate-400">Guest</span>
-                      )}
-                      {item.assignee?.rsvp_status && (
-                        <Badge variant={RSVP_STATUS_VARIANT[item.assignee.rsvp_status] ?? 'default'}>
-                          {formatRsvpStatus(item.assignee.rsvp_status)}
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-slate-600">
-                    {item.due_date ? formatDate(item.due_date, timezone) : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {canEditItem(item) && !canManage ? (
-                      <select
-                        value={item.status}
-                        onChange={(e) => handleStatusChange(item, e.target.value)}
-                        className="rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                      >
-                        {ACTION_ITEM_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Badge variant={ACTION_ITEM_STATUS_VARIANT[item.status]}>{item.status}</Badge>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <p
-                        className="line-clamp-2 min-w-0 flex-1 break-words text-xs text-slate-600 [overflow-wrap:anywhere]"
-                        title={item.remarks || undefined}
-                      >
-                        {item.remarks || '—'}
-                      </p>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => openRemarksModal(item)}
-                          className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-primary-700"
-                          title={item.remarks ? 'Edit remarks' : 'Add remarks'}
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {canEditItem(item) && canManage && (
-                      <button
-                        type="button"
-                        onClick={() => openEdit(item)}
-                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-primary-700"
-                        title="Edit"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      {groupedItems ? (
+        <div className="space-y-6">
+          {groupedItems.map((group) => (
+            <div key={group.source?.id ?? 'current'} className="space-y-2">
+              <h4 className="text-sm font-bold text-slate-800">
+                {getSourceMeetingLabel(group.source, timezone)}
+              </h4>
+              {renderItemsTable(group.records)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        renderItemsTable(items)
+      )}
 
       <Modal
         open={formOpen}
@@ -343,7 +407,7 @@ export default function ActionItemsTab({ meetingId, meeting }) {
         )}
 
         <div className="space-y-4">
-          {canManage || !editItem ? (
+          {!editItem || canManageItem(editItem) ? (
             <>
               <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
               <div>
@@ -370,7 +434,7 @@ export default function ActionItemsTab({ meetingId, meeting }) {
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
               />
-              {editItem && canManage && (
+              {editItem && canManageItem(editItem) && (
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-slate-700">Status</label>
                   <select

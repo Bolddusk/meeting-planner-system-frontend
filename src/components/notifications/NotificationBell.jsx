@@ -1,43 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
-import {
-  getNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-} from '@/api/notifications'
 import { getApiErrorMessage } from '@/api/axios'
+import { useNotifications } from '@/hooks/useNotifications'
 import { getNotificationMeta } from '@/utils/notificationTypes'
 import { formatRelativeTime } from '@/utils/relativeTime'
 import { cn } from '@/utils/cn'
-
-const POLL_INTERVAL_MS = 60_000
 
 export default function NotificationBell() {
   const navigate = useNavigate()
   const containerRef = useRef(null)
   const [open, setOpen] = useState(false)
-  const [notifications, setNotifications] = useState([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [dropdownItems, setDropdownItems] = useState([])
 
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const res = await getNotifications({ limit: 5, unreadOnly: true })
-      setNotifications(res.data ?? [])
-      setUnreadCount(res.meta?.unreadCount ?? 0)
-      setError('')
-    } catch (err) {
-      setError(getApiErrorMessage(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchNotifications()
-    const interval = setInterval(fetchNotifications, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
-  }, [fetchNotifications])
+  const {
+    unreadCount,
+    loading,
+    error,
+    setLoading,
+    refreshRecent,
+    markRead,
+    markAllRead,
+  } = useNotifications()
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -54,7 +38,8 @@ export default function NotificationBell() {
     setOpen(next)
     if (next) {
       setLoading(true)
-      await fetchNotifications()
+      const res = await refreshRecent()
+      setDropdownItems(res?.data ?? [])
       setLoading(false)
     }
   }
@@ -62,25 +47,23 @@ export default function NotificationBell() {
   const handleRead = async (notification) => {
     try {
       if (!notification.is_read) {
-        await markNotificationRead(notification.id)
+        await markRead(notification.id)
       }
-      await fetchNotifications()
       setOpen(false)
       if (notification.meeting_id) {
         navigate(`/meetings/${notification.meeting_id}`)
       }
     } catch (err) {
-      setError(getApiErrorMessage(err))
+      console.error(getApiErrorMessage(err))
     }
   }
 
   const handleMarkAllRead = async () => {
     try {
       setLoading(true)
-      await markAllNotificationsRead()
-      await fetchNotifications()
-    } catch (err) {
-      setError(getApiErrorMessage(err))
+      await markAllRead()
+      const res = await refreshRecent()
+      setDropdownItems(res?.data ?? [])
     } finally {
       setLoading(false)
     }
@@ -124,16 +107,18 @@ export default function NotificationBell() {
             </div>
           )}
 
-          <div className="max-h-80 overflow-y-auto">
-            {loading && notifications.length === 0 ? (
+          <div className="scrollbar-thin max-h-80 overflow-y-auto">
+            {loading && dropdownItems.length === 0 ? (
               <div className="flex justify-center py-8">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-200 border-t-primary-700" />
               </div>
-            ) : notifications.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-slate-500">No unread notifications</p>
+            ) : dropdownItems.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-slate-500">No notifications yet</p>
             ) : (
-              notifications.map((n) => {
+              dropdownItems.map((n) => {
                 const meta = getNotificationMeta(n.type)
+                const isReminder = n.type === 'REMINDER'
+
                 return (
                   <button
                     key={n.id}
@@ -142,6 +127,7 @@ export default function NotificationBell() {
                     className={cn(
                       'flex w-full gap-3 border-b border-slate-50 px-4 py-3 text-left transition-colors hover:bg-slate-50',
                       !n.is_read && 'bg-primary-50/40',
+                      isReminder && !n.is_read && 'border-l-4 border-l-amber-400 pl-3',
                     )}
                   >
                     <span
@@ -153,7 +139,14 @@ export default function NotificationBell() {
                       {meta.icon}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900">{n.title}</p>
+                      <p
+                        className={cn(
+                          'truncate text-sm text-slate-900',
+                          !n.is_read && 'font-semibold',
+                        )}
+                      >
+                        {n.title}
+                      </p>
                       {n.body && (
                         <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{n.body}</p>
                       )}
@@ -168,6 +161,16 @@ export default function NotificationBell() {
                 )
               })
             )}
+          </div>
+
+          <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-center">
+            <Link
+              to="/notifications"
+              onClick={() => setOpen(false)}
+              className="text-xs font-medium text-primary-700 hover:text-primary-800"
+            >
+              View all notifications
+            </Link>
           </div>
         </div>
       )}

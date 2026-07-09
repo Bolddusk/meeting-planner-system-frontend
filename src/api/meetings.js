@@ -79,3 +79,8 @@ export async function downloadMeetingIcs(meetingId) {
   link.remove()
   window.URL.revokeObjectURL(url)
 }
+
+export async function scheduleFollowUpMeeting(sourceMeetingId, payload) {
+  const { data } = await api.post(`/meetings/${sourceMeetingId}/follow-up`, payload)
+  return data
+}

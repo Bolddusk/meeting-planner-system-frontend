@@ -13,6 +13,7 @@ import Rooms from '@/pages/Rooms'
 import Exports from '@/pages/Exports'
 import AuditLog from '@/pages/AuditLog'
 import Settings from '@/pages/Settings'
+import Notifications from '@/pages/Notifications'
 
 function AppRoutes() {
   const initialize = useAuthStore((s) => s.initialize)
@@ -81,6 +82,7 @@ function AppRoutes() {
           }
         />
         <Route path="settings" element={<Settings />} />
+        <Route path="notifications" element={<Notifications />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

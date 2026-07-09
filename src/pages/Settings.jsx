@@ -14,14 +14,12 @@ const CHANNEL_OPTIONS = [
 ]
 
 const LEAD_TIME_OPTIONS = [
-  { value: 1440, label: '1 day before (1440 min)' },
   { value: 60, label: '1 hour before (60 min)' },
-  { value: 15, label: '15 minutes before (15 min)' },
 ]
 
 const DEFAULT_PREFERENCES = {
   channels: ['EMAIL', 'IN_APP'],
-  lead_times: [1440, 60, 15],
+  lead_times: [60],
 }
 
 export default function Settings() {
@@ -138,6 +136,9 @@ export default function Settings() {
 
             <div className="space-y-2">
               <p className="text-sm font-medium text-slate-700">Remind me before meeting</p>
+              <p className="text-xs text-slate-500">
+                The system currently sends reminders 1 hour before each meeting start time.
+              </p>
               {LEAD_TIME_OPTIONS.map((opt) => (
                 <label key={opt.value} className="flex items-center gap-2 text-sm text-slate-600">
                   <input
